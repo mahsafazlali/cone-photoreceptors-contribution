@@ -1,0 +1,460 @@
+---
+title: "Analysis - cone photoreceptors contribution on human physiology - iScience"
+author: "Fatemeh (Mahsa) Fazlali"
+date: "2024-08-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Set options for knitting the document
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+#Clean Environment
+```{r, include=FALSE}
+# Clear the environment to avoid any leftover variables or data from previous sessions.
+rm(list=ls()) 
+
+# Close any open graphic devices to prevent issues with plotting.
+graphics.off()  
+
+```
+
+#Install and Load Required Packages
+```{r}
+# Install 'pacman', a package manager that helps manage other R packages.
+if (!require("pacman")) install.packages("pacman")
+
+# Load necessary libraries for the analysis, including packages for visualization, GLM, and Bayesian analysis.
+pacman::p_load(
+  # Visualization packages
+  ggplot2, dplyr, tidyverse, pROC, cowplot, ggpubr, ggridges, ggdist, zoo,
+  
+  # GLM packages for generalized linear models
+  rstanarm, brms,
+  
+  # Bayesian analysis and diagnostic packages
+  bayestestR, BayesFactor, hBayesDM,
+  
+  # Additional packages for visualization and analysis
+  see, bayesplot, ggeffects, BayesPostEst
+)
+
+```
+
+# Import the datasets
+```{r}
+# Import the melatonin and subjective alertness (KSS) data.
+# Make sure the file paths are correct and use relative paths if possible for portability.
+#Mel_KSS_TP<- 
+#  read.csv("C:/PHDPoject/ConesStudy/PhD publications/IS article/iSceince Final submission/Data/Melatonin_KSS_data.csv")
+
+# Import AUC (Area Under the Curve) and average KSS data.
+AUC_KSS<- 
+  read.csv("C:/PHDPoject/ConesStudy/PhD publications/IS article/iSceince Final submission/Data/AUC_AvgKSS_data.csv")
+
+```
+
+
+
+
+
+#--------------------------------------------------------------------------------------------------------------------------------------------------------Plotting----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+-------------------------------------------------------------------------------------------------------------
+#Functions for plotting
+```{r}
+
+# Define custom colors for different light conditions
+# 'BL', 'BG', etc., refer to specific light conditions. please check the manuscript 
+custom_colors <- c("BL" = "gray30", "BG" = "gray70", "S" = "dodgerblue", "ML" = "green3", "SML" = "magenta")
+
+
+# Create a function for generating consistent plots across different datasets.
+# Parameters:
+#   - data: The data to be plotted
+#   - y_var: The dependent variable (AUC or KSS)
+#   - y_label: The y-axis label
+#   - scale_y_breaks: The y-axis tick marks
+#   - scale_y_limits: The y-axis range
+#   - legend_s: The position of the legend
+
+create_plot <- function(data, y_var, y_label, scale_y_breaks, scale_y_limits, legend_s) {
+  ggplot(data, aes(x = Condition, y = !!sym(y_var), fill= Condition)) +
+      scale_fill_manual(values = custom_colors, name = " ") +
+  geom_violin(trim = FALSE, alpha = 0.5, adjust = 0.5) +  # Violin plot to show the distribution of data.
+  geom_boxplot(width = 0.2, alpha = 0.7, position = position_dodge(width = 0.9), outlier.shape = NA) +  # Boxplot to show summary statistics.
+  geom_jitter(position = position_nudge(y = 0.2) , size = 2, alpha = 1) +  # Jittered points to show individual data points.
+  geom_line(aes(group = id), linetype = "dashed",position = position_nudge(y = 0.2), color = "black", alpha = 0.5) +  # Dashed lines connecting points for each participant.
+  labs(title = "", x = "", y = y_label, color = "Light condition") +  # Set axis labels.
+  theme(
+    panel.background = element_rect(fill = "white", colour = "white"),  # White background for the plot.
+    plot.background = element_rect(fill = "white", colour = NA),  # White background for the plot area.
+    axis.line.x = element_line(color = "black", size = 1),  # Add a black line for the x-axis.
+    axis.line.y = element_line(color = "black", size = 1),
+    legend.position = legend_s,  # Control legend position using the argument passed to the function.
+    axis.title.x = element_text(size = 18),  # Set size for x-axis label.
+    axis.title.y = element_text(size = 18),  # Set size for y-axis label.
+    axis.text.x = element_text(size = 14),  # Set size for x-axis tick labels.
+    axis.text.y = element_text(size = 14),  # Set size for y-axis tick labels.
+    legend.text = element_text(size = 14),  # Set size for legend text.
+    legend.key.size = unit(1.5, "lines")  # Set size for the legend key.
+  ) +
+  scale_y_continuous(breaks = scale_y_breaks, limits = scale_y_limits)  # Define y-axis breaks and limits.
+}
+
+# Define a function to create density plots for KSS (subjective alertness).
+create_density_plot <- function(data, y_var, y_label, scale_y_breaks, scale_y_limits) {
+  ggplot(data, aes(x = !!sym(y_var), y = Condition, fill = Condition)) +
+    geom_density_ridges(alpha = 0.5, scale = 0.8) +  # Density plot to show the distribution.
+    geom_boxplot(aes(x = !!sym(y_var), y = Condition), 
+                 width = 0.2, alpha = 0.7, position = position_nudge(y = 0.2), outlier.shape = NA) +  # Boxplot to summarize data.
+    geom_jitter(aes(x = !!sym(y_var), y = Condition), 
+                position = position_nudge(y = 0.2), 
+                size = 2, alpha = 0.8) +  # Jittered points for individual data points.
+    scale_fill_manual(values = custom_colors, name = "Light Condition") +  # Use custom colors defined earlier.
+    labs(title = "", x = y_label, y = "", fill = "Light Condition") +  # Set axis labels.
+    theme(
+      panel.background = element_rect(fill = "white", colour = "white"),  # White background.
+      plot.background = element_rect(fill = "white", colour = NA),
+      axis.line.x = element_line(color = "black", size = 1),  # X-axis line.
+      axis.line.y = element_line(color = "black", size = 1),
+      legend.position = legend_s,  # Legend position defined by user input.
+      axis.title.x = element_text(size = 18),  # X-axis title size.
+      axis.title.y = element_text(size = 18),  # Y-axis title size.
+      axis.text.x = element_text(size = 14),  # X-axis text size.
+      axis.text.y = element_text(size = 14),  # Y-axis text size.
+      legend.text = element_text(size = 14),  # Legend text size.
+      legend.key.size = unit(1.5, "lines")  # Legend key size.
+    ) +
+    scale_x_continuous(breaks = scale_y_breaks, limits = scale_y_limits)  # Define y-axis breaks and limits.
+}
+
+```
+
+
+#Data Subsets for AUC Analysis
+```{r}
+# Subset the AUC_KSS data for specific conditions: removing S-cone, M-L, and S+M+L conditions.
+AUC_KSS_BLBG <- subset(AUC_KSS, Condition != "S" & Condition != "ML" & Condition != "SML")
+AUC_KSS_BLBG$Condition <- factor(AUC_KSS_BLBG$Condition, levels = c("BL", "BG"))  # Re-level the factors to control the plotting order.
+
+# Group participants by their light condition combinations.
+S_ML_SML <- AUC_KSS %>%
+  group_by(id) %>%
+  summarize(Conditions = paste(sort(unique(Condition)), collapse = ","))
+
+# Filter participants for S, ML, and SML conditions.
+S <- S_ML_SML %>%
+  filter(Conditions == "BG,BL,S")
+ML <- S_ML_SML %>%
+  filter(Conditions == "BG,BL,ML")
+SML <- S_ML_SML %>%
+  filter(Conditions == "BG,BL,SML")
+
+# Further subset the data based on light condition combinations.
+AUC_KSS_S <- AUC_KSS %>% filter(id %in% S$id)
+AUC_KSS_S$Condition <- factor(AUC_KSS_S$Condition, levels = c("BL", "BG", "S"))
+AUC_KSS_S <- subset(AUC_KSS_S, Condition != "BL")
+
+AUC_KSS_ML <- AUC_KSS %>% filter(id %in% ML$id)
+AUC_KSS_ML$Condition <- factor(AUC_KSS_ML$Condition, levels = c("BL", "BG", "ML"))
+AUC_KSS_ML <- subset(AUC_KSS_ML, Condition != "BL")
+
+AUC_KSS_SML <- AUC_KSS %>% filter(id %in% SML$id)
+AUC_KSS_SML$Condition <- factor(AUC_KSS_SML$Condition, levels = c("BL", "BG", "SML"))
+AUC_KSS_SML <- subset(AUC_KSS_SML, Condition != "BL")
+
+```
+
+#Plotting melatonin AUC figure
+```{r}
+#general
+AUCALL <- create_plot(AUC_KSS_BLBG, "AUC", "",  
+              scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"")
+AUCS <- create_plot(AUC_KSS_S, "AUC", "", 
+             scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"")
+AUCML <- create_plot(AUC_KSS_ML, "AUC", "", 
+             scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"")
+AUCSML <- create_plot(AUC_KSS_SML, "AUC", "",  
+              scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"")
+
+
+#winter
+AUCALL_wnt <- create_plot(subset(AUC_KSS_BLBG, Season == "Winter"), "AUC", "", 
+             scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"")
+AUCS_wnt <- create_plot(subset(AUC_KSS_S, Season == "Winter"), "AUC", "", 
+             scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"")
+AUCML_wnt <- create_plot(subset(AUC_KSS_ML, Season == "Winter"), "AUC", "", 
+             scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"")
+AUCSML_wnt <- create_plot(subset(AUC_KSS_SML, Season == "Winter"), "AUC", "", 
+             scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"")
+
+
+#summer  
+AUCALL_smr <- create_plot(subset(AUC_KSS_BLBG, Season == "Summer"), "AUC", "", 
+             scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"bottom")
+AUCS_smr <- create_plot(subset(AUC_KSS_S, Season == "Summer"), "AUC", "", 
+             scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"bottom")
+AUCML_smr <- create_plot(subset(AUC_KSS_ML, Season == "Summer"), "AUC", "", 
+             scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"bottom")
+AUCSML_smr <- create_plot(subset(AUC_KSS_SML, Season == "Summer"), "AUC", "", 
+             scale_y_breaks = seq(0, 200, 50), scale_y_limits = c(-10, 200),"bottom")
+
+
+AllAUCSML <- ggarrange(
+  AUCALL, AUCS, AUCML, AUCSML, AUCALL_wnt,AUCS_wnt, AUCML_wnt, AUCSML_wnt, AUCALL_smr, AUCS_smr, AUCML_smr, AUCSML_smr,
+  labels = c("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"), 
+  font.label = list(size = 15), 
+  ncol = 4, nrow = 3, align = "v")
+#print(AllAUCSML)
+
+library(ggpubr)
+
+# Adjust the position of the labels using vjust and hjust
+AllAUCSML <- annotate_figure(AllAUCSML,
+                              left = text_grob("Melatonin AUC [pg/mL/h]", size = 25, rot = 90, 
+                                               vjust = 0.5, hjust = 0.5),  # Adjust vertical/horizontal justifications
+                              bottom = text_grob("Light Condition", size = 25, 
+                                                 vjust = 1.5, hjust = 0.5))  # Adjust bottom label position
+
+# If you need extra space between the plot and the edges, you can use plot.margin
+AllAUCSML <- AllAUCSML + theme(plot.margin = unit(c(1,1,1,1), "cm"))  # Adjust margins for top, right, bottom, left
+
+
+# Save the combined plots as a JPEG file
+ggsave(file = "C:/PHDPoject/ConesStudy/PhD publications/IS article/iSceince Final submission/Figure/AUC.jpg",
+       plot = AllAUCSML,
+       width = 12,  # Set the width of the image
+       height = 18,  # Set the height of the image
+       units = "in",  # Set the units of width and height
+       dpi = 300)
+
+```
+
+#Plotting average KSS figure
+```{r}
+#general
+KSSALL <- create_plot(AUC_KSS_BLBG, "Avg_KSS", "",  
+              scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"")
+AVEKSSS <- create_plot(AUC_KSS_S, "Avg_KSS", "", 
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"")
+AVEKSSML <- create_plot(AUC_KSS_ML, "Avg_KSS", "", 
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"")
+AVEKSSSML <- create_plot(AUC_KSS_SML, "Avg_KSS", "",  
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"")
+
+
+
+#winter
+KSSALL_wnt <- create_plot(subset(AUC_KSS_BLBG, Season == "Winter"), "Avg_KSS", "",
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"")
+AVEKSSS_wnt <- create_plot(subset(AUC_KSS_S, Season == "Winter"),"Avg_KSS", "", 
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"")
+AVEKSSML_wnt <- create_plot(subset(AUC_KSS_ML, Season == "Winter"), "Avg_KSS", "", 
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"")
+AVEKSSSML_wnt <- create_plot(subset(AUC_KSS_SML, Season == "Winter"), "Avg_KSS", "", 
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"")
+
+
+
+#summer
+KSSALL_smr <- create_plot(subset(AUC_KSS_BLBG, Season == "Summer"), "Avg_KSS", "",
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"bottom")
+AVEKSSS_smr <- create_plot(subset(AUC_KSS_S, Season == "Summer"), "Avg_KSS", "", 
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"bottom")
+AVEKSSML_smr <- create_plot(subset(AUC_KSS_ML, Season == "Summer"), "Avg_KSS", "",  
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"bottom")
+AVEKSSSML_smr <- create_plot(subset(AUC_KSS_SML, Season == "Summer"), "Avg_KSS", "", 
+             scale_y_breaks = seq(1, 9, 1), scale_y_limits = c(1, 10),"bottom")
+
+
+
+AllAVEKSSSML <- ggarrange(KSSALL, AVEKSSS, AVEKSSML, AVEKSSSML, KSSALL_wnt, AVEKSSS_wnt, AVEKSSML_wnt, AVEKSSSML_wnt, KSSALL_smr, AVEKSSS_smr, AVEKSSML_smr, AVEKSSSML_smr, labels = c("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"), font.label = list(size = 15), ncol = 4, nrow = 3, align = "v")
+
+# Adjust the position of the labels using vjust and hjust
+AllAVEKSSSML <- annotate_figure(AllAVEKSSSML,
+                              left = text_grob("Subjective Alertness", size = 25, rot = 90, 
+                                               vjust = 0.5, hjust = 0.5),  # Adjust vertical/horizontal justifications
+                              bottom = text_grob("Light Condition", size = 25, 
+                                                 vjust = 1.5, hjust = 0.5))  # Adjust bottom label position
+
+# If you need extra space between the plot and the edges, you can use plot.margin
+AllAVEKSSSML <- AllAVEKSSSML + theme(plot.margin = unit(c(1,1,1,1), "cm"))  # Adjust margins for top, right, bottom, left
+# Save the combined plots as a JPEG file
+ggsave(file = "C:/PHDPoject/ConesStudy/PhD publications/IS article/iSceince Final submission/Figure/KSS.jpg",
+       plot = AllAVEKSSSML,
+       width = 12,  # Set the width of the image
+       height = 18,  # Set the height of the image
+       units = "in",  # Set the units of width and height
+       dpi = 300)
+```
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#---Statistical Analysis
+
+
+---------------------------------
+#Bayesian Analysis
+```{r}
+#AUC analysis
+#null hypothesis for AUC
+f01 <- "AUC ~ Season + (1|Code)"
+#full hypothesis for AUC
+f1 <- "AUC ~ Light.condition * Season + (1|Code)"
+
+#-------------------------------------
+#KSS analysis 
+#null hypothesis for KSS
+f02 <- "Avg_KSS ~ Season + (1|Code)"
+#full hypothesis for KSS
+f2 <- "Avg_KSS ~ Light.condition * Season + (1|Code)"
+
+```
+
+#Default prior normal (0,1)
+```{r}
+# Define the function
+perform_analysis <- function(data, formula_null, formula_alt, chains = 4, iter = 20000) {
+  
+  # Fit the null model
+  model_null <- stan_glmer(
+    formula = formula_null,
+    data = data,
+    prior = normal(),
+    prior_intercept = normal(),
+    chains = chains,
+    iter = iter,
+    diagnostic_file = "diag01.csv"
+    )
+  
+  # Summary of the null model
+  print(summary(model_null))
+  
+  # Fit the alternative model
+  model_alt <- stan_glmer(
+    formula = formula_alt,
+    data = data,
+    prior = normal(),
+    prior_intercept = normal(),
+    chains = chains,
+    iter = iter,
+    diagnostic_file = "diag2.csv" 
+    )
+  
+  # Summary of the alternative model
+  print(summary(model_alt))
+  
+  # Extract posterior samples
+  posterior_samples <- as.data.frame(model_alt)
+  
+  # Compute the 95% credible intervals
+  CI95 <- posterior_interval(model_alt, prob = 0.95)
+  
+  # Compute Bayes factor
+  bf <- bayesfactor_models(model_null, model_alt)
+  print(bf)
+  
+  # Return the models and Bayes factor
+  return(list(model_null = model_null, model_alt = model_alt, bayes_factor = bf, posterior_samples = posterior_samples, CI95 = CI95))
+}
+
+```
+
+
+#All participants BG&BL 
+```{r}
+#AUC
+#-------------------------------------------------
+# Perform analyses and Extract posterior samples
+result1 <- perform_analysis(AUC_KSS_BLBG, f01, f1)
+CI95_1 <- result1$CI95
+posterior_samples1 <- result1$posterior_samples
+#Avg_KSS 
+#------------------------------------------------------
+result2 <- perform_analysis(AUC_KSS_BLBG, f02, f2)
+CI95_2 <- result2$CI95
+posterior_samples2 <- result2$posterior_samples
+
+# Visualize prior vs. posterior
+par(mfrow = c(2, 2))
+hist(posterior_samples1$`Light.conditionBL`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "white", main = "Posterior Samples 1", xlab = "Light.conditionBL")
+hist(posterior_samples2$`Light.conditionBL`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "white", main = "Posterior Samples 2", xlab = "Light.conditionBL")
+hist(posterior_samples1$`Light.conditionBG`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "gray30", main = "Posterior Samples 1", xlab = "Light.conditionBG")
+hist(posterior_samples2$`Light.conditionBG`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "gray30", main = "Posterior Samples 2", xlab = "Light.conditionBG")
+
+```
+
+#s_cone group
+```{r}
+#AUC
+#-------------------------------------------------
+# Perform analyses
+result3 <- perform_analysis(AUC_KSS_S, f01, f1)
+CI95_3 <- result3$CI95
+posterior_samples3 <- result3$posterior_samples
+#Avg_KSS 
+result4 <- perform_analysis(AUC_KSS_S, f02, f2)
+CI95_4 <- result4$CI95
+posterior_samples4 <- result4$posterior_samples
+
+# Visualize prior vs. posterior
+par(mfrow = c(2, 2))
+hist(posterior_samples3$`Light.conditionS`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "cyan", main = "Posterior Samples 1", xlab = "Light.condition S")
+hist(posterior_samples4$`Light.conditionS`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "cyan", main = "Posterior Samples 2", xlab = "Light.condition S")
+hist(posterior_samples3$`Light.conditionBG`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "gray30", main = "Posterior Samples 1", xlab = "Light.conditionBG")
+hist(posterior_samples4$`Light.conditionBG`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "gray30", main = "Posterior Samples 2", xlab = "Light.conditionBG")
+```
+
+
+#M-L group
+```{r}
+#AUC
+#-------------------------------------------------
+# Perform analyses
+result5 <- perform_analysis(AUC_KSS_ML, f01, f1)
+CI95_5 <- result5$CI95
+posterior_samples5 <- result5$posterior_samples
+#Avg_KSS 
+#------------------------------------------------------
+result6 <- perform_analysis(AUC_KSS_ML, f02, f2)
+CI95_6 <- result6$CI95
+posterior_samples6 <- result6$posterior_samples
+#Extract posterior samples
+
+# Visualize prior vs. posterior
+par(mfrow = c(2, 2))
+hist(posterior_samples5$`Light.conditionML`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "green", main = "Posterior Samples 1", xlab = "Light.condition ML")
+hist(posterior_samples6$`Light.conditionML`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "green", main = "Posterior Samples 2", xlab = "Light.condition ML")
+hist(posterior_samples5$`Light.conditionBG`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "gray30", main = "Posterior Samples 1", xlab = "Light.conditionBG")
+hist(posterior_samples6$`Light.conditionBG`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "gray30", main = "Posterior Samples 2", xlab = "Light.conditionBG")
+```
+
+
+#S+M+L group
+```{r}
+#AUC
+#-------------------------------------------------
+# Perform analyses
+result7 <- perform_analysis(AUC_KSS_SML, f01, f1)
+CI95_7 <- result7$CI95
+posterior_samples7 <- result7$posterior_samples
+
+result8 <- perform_analysis(AUC_KSS_SML, f02, f2)
+CI95_8 <- result8$CI95
+posterior_samples8 <- result8$posterior_samples
+
+# Visualize prior vs. posterior
+par(mfrow = c(2, 2))
+hist(posterior_samples7$`Light.conditionSML`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "magenta", main = "Posterior Samples 1", xlab = "Light.condition SML")
+hist(posterior_samples8$`Light.conditionSML`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "magenta", main = "Posterior Samples 2", xlab = "Light.condition SML")
+hist(posterior_samples7$`Light.conditionBG`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "gray30", main = "Posterior Samples 1", xlab = "Light.conditionBG")
+hist(posterior_samples8$`Light.conditionBG`, breaks = 15, las = 1, xlim = c(-15, 15), yaxt = "n", col = "gray30", main = "Posterior Samples 2", xlab = "Light.conditionBG")
+
+```
+
+

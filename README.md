@@ -1,4 +1,4 @@
-# cone-photoreceptors-contribution
+cone-photoreceptors-contribution
 code and data for Fazlali et al 2024, iScience
 
 Licensing
@@ -6,7 +6,6 @@ This repository contains the datasets and analysis code of the manuscript "After
 
 Description
 This repository contains the code and data used for the analysis in the manuscript titled "Lack of evidence for the contribution of cone photoreceptors to human melatonin suppression and alerting response to light at night" submitted to iScience. The analysis explores the effects of different light conditions (BL, BG, S-cone, M-L, and S+M+L) on melatonin secretion (measured as AUC) and subjective alertness (KSS scores).
-
 The code is written in R and includes functions for data preprocessing, statistical modeling using Bayesian analysis, and the generation of plots. 
 
 Dataset names
